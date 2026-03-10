@@ -749,6 +749,7 @@ class Linear:
                 self._weight_t_padded = weight_t
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        print(f"inside call, {Linear.BACKEND}")
         if Linear.BACKEND in ("torch", "cublas"):
             return self._forward_torch(x)
         if Linear.BACKEND == "triton":

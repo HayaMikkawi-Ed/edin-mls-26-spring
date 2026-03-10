@@ -216,7 +216,15 @@ def causal_mask_kernel(
         scores,
         mask=mask,
     )
-
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_Q': 16, 'BLOCK_K': 16}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_Q': 32, 'BLOCK_K': 32}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_Q': 64, 'BLOCK_K': 32}, num_warps=4, num_stages=3),
+        triton.Config({'BLOCK_Q': 32, 'BLOCK_K': 64}, num_warps=8, num_stages=3),
+    ],
+    key=['seq_q', 'seq_k', 'head_dim'],
+)
 @triton.jit
 def flash_attention_kernel(
     q_ptr, k_ptr, v_ptr, output_ptr, 
@@ -373,7 +381,7 @@ def next_power_of_two(x: int) -> int:
     return 1 << (x - 1).bit_length() if x > 0 else 1
 
 
-MAX_ATTENTION_DIM = 256
+MAX_ATTENTION_DIM = 2048
 
 
 def scaled_dot_product_attention(
@@ -500,7 +508,7 @@ def scaled_dot_product_attention(
             v_flat.stride(0), v_flat.stride(1), v_flat.stride(2),
             output.stride(0), output.stride(1), output.stride(2),
             mask_tensor.stride(0), mask_tensor.stride(1), mask_tensor.stride(2),
-            BLOCK_Q=BLOCK_Q, BLOCK_K=16, BLOCK_D=head_dim_padded,
+            BLOCK_D=head_dim_padded,
             IS_CAUSAL=is_causal, HAS_MASK=HAS_MASK)
         # scores_2d = scores.reshape(batch * num_heads * seq_q, seq_k_padded)
         # block = seq_k_padded

@@ -510,6 +510,7 @@ def scaled_dot_product_attention(
             mask_tensor.stride(0), mask_tensor.stride(1), mask_tensor.stride(2),
             BLOCK_D=head_dim_padded,
             IS_CAUSAL=is_causal, HAS_MASK=HAS_MASK)
+        print(f"Flash attention best config: {flash_attention_kernel.best_config}")
         # scores_2d = scores.reshape(batch * num_heads * seq_q, seq_k_padded)
         # block = seq_k_padded
         # softmax_inplace_kernel[(scores_2d.shape[0],)](

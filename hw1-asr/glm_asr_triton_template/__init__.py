@@ -17,8 +17,8 @@ if _dir not in sys.path:
 from . import layers
 
 layers.Linear.BACKEND = "triton"
-layers.MLP.FUSED = True
-layers.EncoderMLP.FUSED = True
+layers.MLP.FUSED = False
+layers.EncoderMLP.FUSED = False
 
 from . import model
 from . import rope

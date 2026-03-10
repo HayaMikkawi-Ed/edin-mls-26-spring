@@ -218,10 +218,8 @@ def causal_mask_kernel(
     )
 @triton.autotune(
     configs=[
-        triton.Config({'BLOCK_Q': 16, 'BLOCK_K': 16}, num_warps=4, num_stages=2),
         triton.Config({'BLOCK_Q': 32, 'BLOCK_K': 32}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_Q': 64, 'BLOCK_K': 32}, num_warps=4, num_stages=3),
-        triton.Config({'BLOCK_Q': 32, 'BLOCK_K': 64}, num_warps=8, num_stages=3),
+        triton.Config({'BLOCK_Q': 16, 'BLOCK_K': 16}, num_warps=4, num_stages=2),
     ],
     key=['seq_q', 'seq_k', 'head_dim'],
 )

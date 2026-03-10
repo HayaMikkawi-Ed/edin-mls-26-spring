@@ -70,10 +70,8 @@ def rmsnorm_kernel(
     # Step 4: Apply weight and store
 
     # YOUR CODE HERE
-    pid = tl.program_id(0)
     offs = tl.arange(0, BLOCK_SIZE)
     mask = offs < hidden_size
-
     x = tl.load(x_ptr + pid * stride_x + offs, mask=mask, other=0.0)
     x = x.to(tl.float32)
     var = tl.sum(x * x, axis=0) / hidden_size
@@ -81,7 +79,6 @@ def rmsnorm_kernel(
     w = tl.load(w_ptr + offs, mask=mask, other=0.0)
     y = x_norm * w
     tl.store(y_ptr + pid * stride_y + offs, y, mask=mask)
-    pass
 
 
 @triton.jit
@@ -116,21 +113,18 @@ def layernorm_kernel(
     # Step 5: Normalize and apply affine transform
 
     # YOUR CODE HERE
-    pid = tl.program_id(0)
     offs = tl.arange(0, BLOCK_SIZE)
     mask = offs < hidden_size
-
     x = tl.load(x_ptr + pid * stride_x + offs, mask=mask, other=0.0)
     x = x.to(tl.float32)
+    w = tl.load(w_ptr + offs, mask=mask, other=0.0)
+    b = tl.load(b_ptr + offs, mask=mask, other=0.0)
     mean = tl.sum(x, axis=0) / hidden_size
     x_centered = x - mean
     var = tl.sum(x_centered * x_centered, axis=0) / hidden_size
     x_norm = x_centered * tl.rsqrt(var + eps)
-    w = tl.load(w_ptr + offs, mask=mask, other=0.0)
-    b = tl.load(b_ptr + offs, mask=mask, other=0.0)
     y = x_norm * w + b
     tl.store(y_ptr + pid * stride_y + offs, y, mask=mask)
-    pass
 
 
 @triton.jit
@@ -151,7 +145,6 @@ def gelu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     # Step 3: Store output
 
     # YOUR CODE HERE
-    pid = tl.program_id(0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
     x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
@@ -161,7 +154,6 @@ def gelu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     inner = sqrt_2_over_pi * (x + 0.044715 * x3)
     y = x * 0.5 * (1.0 + tl.extra.cuda.libdevice.tanh(inner))
     tl.store(y_ptr + offs, y, mask=mask)
-    pass
 
 
 @triton.jit
@@ -171,8 +163,6 @@ def silu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
     *** TODO: Implement this kernel ***
     """
-    pid = tl.program_id(0)
-
     # ============================================================================
     # TODO: Implement SiLU kernel
     # ============================================================================
@@ -189,7 +179,6 @@ def silu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     sigmoid = 1.0 / (1.0 + tl.exp(-x))
     y = x * sigmoid
     tl.store(y_ptr + offs, y, mask=mask)
-    pass
 
 
 # @triton.autotune(
@@ -244,9 +233,6 @@ def linear_kernel_tf32(
     Tensor core-style matmul: output = A @ B.
     A: (M, K), B: (K, N), C: (M, N)
     """
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
-
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
@@ -271,7 +257,7 @@ def linear_kernel_tf32(
         acc,
         mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
     )
-    pass
+    
 
 
 @triton.jit
@@ -432,17 +418,15 @@ def softmax_kernel(x_ptr, y_ptr, stride_x, stride_y, n_cols, BLOCK_SIZE: tl.cons
     # Step 4: Store output
 
     # YOUR CODE HERE
-    row = tl.program_id(0)
     offs = tl.arange(0, BLOCK_SIZE)
     mask = offs < n_cols
-
     x = tl.load(x_ptr + row * stride_x + offs, mask=mask, other=-float("inf"))
     x = x - tl.max(x, axis=0)
     exp_x = tl.exp(x)
     denom = tl.sum(exp_x, axis=0)
     y = exp_x / denom
     tl.store(y_ptr + row * stride_y + offs, y, mask=mask)
-    pass
+
 
 
 @triton.jit
@@ -730,7 +714,7 @@ def get_activation(name: str):
 class Linear:
     """Linear layer with switchable backend (torch or Triton)."""
 
-    TILE_M = 128
+    TILE_M = 64
     TILE_N = 64
     TILE_K = 32
 

@@ -714,7 +714,7 @@ class Linear:
     TILE_N = 64
     TILE_K = 32
 
-    BACKEND = "triton"
+    BACKEND = "torch"
 
     def __init__(self, in_features: int, out_features: int, bias: bool = True):
         self.in_features = in_features
@@ -813,6 +813,7 @@ class Linear:
         #     triton.cdiv(M_padded, self.TILE_M),
         #     triton.cdiv(self._N_padded, self.TILE_N),
         # )
+        print(f"BACKEND is: {Linear.BACKEND}")
         grid = lambda meta: (
             triton.cdiv(M_padded, meta['BLOCK_M']),
             triton.cdiv(self._N_padded, meta['BLOCK_N']),

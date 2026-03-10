@@ -812,9 +812,13 @@ class Linear:
             (M_padded, self._N_padded), dtype=torch.float32, device=x.device
         )
 
-        grid = (
-            triton.cdiv(M_padded, self.TILE_M),
-            triton.cdiv(self._N_padded, self.TILE_N),
+        # grid = (
+        #     triton.cdiv(M_padded, self.TILE_M),
+        #     triton.cdiv(self._N_padded, self.TILE_N),
+        # )
+        grid = lambda meta: (
+            triton.cdiv(M_padded, meta['BLOCK_M']),
+            triton.cdiv(self._N_padded, meta['BLOCK_N']),
         )
         linear_kernel_tf32[grid](
             x_padded,

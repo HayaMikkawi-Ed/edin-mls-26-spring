@@ -180,17 +180,16 @@ def silu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     y = x * sigmoid
     tl.store(y_ptr + offs, y, mask=mask)
 
-
-# @triton.autotune(
-#     configs=[
-#         triton.Config({'BLOCK_M': 64,  'BLOCK_N': 64,  'BLOCK_K': 32}, num_warps=4, num_stages=2),
-#         triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64,  'BLOCK_K': 32}, num_warps=4, num_stages=3),
-#         triton.Config({'BLOCK_M': 64,  'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=4, num_stages=3),
-#         triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=8, num_stages=3),
-#     ],
-#     key=['M', 'N', 'K'],
-# )
-
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_M': 64,  'BLOCK_N': 64,  'BLOCK_K': 32}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64,  'BLOCK_K': 32}, num_warps=4, num_stages=3),
+        triton.Config({'BLOCK_M': 64,  'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=4, num_stages=3),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=8, num_stages=3),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64}, num_warps=8, num_stages=4),
+    ],
+    key=['M', 'N', 'K'],
+)
 @triton.jit
 def linear_kernel_tf32(
     a_ptr,
@@ -830,29 +829,11 @@ class Linear:
             self._weight_t_padded.stride(1),
             output.stride(0),
             output.stride(1),
-            BLOCK_M=self.TILE_M,
-            BLOCK_N=self.TILE_N,
-            BLOCK_K=self.TILE_K,
+            # BLOCK_M=self.TILE_M,
+            # BLOCK_N=self.TILE_N,
+            # BLOCK_K=self.TILE_K,
         )
-        # grid = lambda meta: (
-        # triton.cdiv(M_padded, meta['BLOCK_M']),
-        # triton.cdiv(self._N_padded, meta['BLOCK_N']),
-        # )
-        # linear_kernel_tf32[grid](
-        #     x_padded,
-        #     self._weight_t_padded,
-        #     output,
-        #     M_padded,
-        #     self._N_padded,
-        #     self._K_padded,
-        #     x_padded.stride(0),
-        #     x_padded.stride(1),
-        #     self._weight_t_padded.stride(0),
-        #     self._weight_t_padded.stride(1),
-        #     output.stride(0),
-        #     output.stride(1),
-        # )
-
+        print(f"linear_kernel_tf32 best config: {linear_kernel_tf32.best_config}")
         output = output[:M, :N]
 
         if self.has_bias and self.bias_param is not None:

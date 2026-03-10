@@ -714,7 +714,7 @@ class Linear:
     TILE_N = 64
     TILE_K = 32
 
-    BACKEND = "torch"
+    BACKEND = "triton"
 
     def __init__(self, in_features: int, out_features: int, bias: bool = True):
         self.in_features = in_features

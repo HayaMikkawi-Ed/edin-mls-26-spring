@@ -184,9 +184,6 @@ def silu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     configs=[
         triton.Config({'BLOCK_M': 64,  'BLOCK_N': 64,  'BLOCK_K': 32}, num_warps=4, num_stages=2),
         triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64,  'BLOCK_K': 32}, num_warps=4, num_stages=3),
-        triton.Config({'BLOCK_M': 64,  'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=4, num_stages=3),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=8, num_stages=3),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64}, num_warps=8, num_stages=4),
     ],
     key=['M', 'N', 'K'],
 )
@@ -837,7 +834,7 @@ class Linear:
             # BLOCK_N=self.TILE_N,
             # BLOCK_K=self.TILE_K,
         )
-        print(f"linear_kernel_tf32 best config: {linear_kernel_tf32.best_config}")
+        # print(f"linear_kernel_tf32 best config: {linear_kernel_tf32.best_config}")
         output = output[:M, :N]
 
         if self.has_bias and self.bias_param is not None:

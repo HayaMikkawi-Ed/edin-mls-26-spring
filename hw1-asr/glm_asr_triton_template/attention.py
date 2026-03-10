@@ -216,13 +216,13 @@ def causal_mask_kernel(
         scores,
         mask=mask,
     )
-@triton.autotune(
-    configs=[
-        triton.Config({'BLOCK_Q': 32, 'BLOCK_K': 32}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_Q': 16, 'BLOCK_K': 16}, num_warps=4, num_stages=2),
-    ],
-    key=['seq_q', 'seq_k', 'head_dim'],
-)
+# @triton.autotune(
+#     configs=[
+#         triton.Config({'BLOCK_Q': 32, 'BLOCK_K': 32}, num_warps=4, num_stages=2),
+#         triton.Config({'BLOCK_Q': 16, 'BLOCK_K': 16}, num_warps=4, num_stages=2),
+#     ],
+#     key=['seq_q', 'seq_k', 'head_dim'],
+# )
 @triton.jit
 def flash_attention_kernel(
     q_ptr, k_ptr, v_ptr, output_ptr, 
@@ -507,6 +507,7 @@ def scaled_dot_product_attention(
             output.stride(0), output.stride(1), output.stride(2),
             mask_tensor.stride(0), mask_tensor.stride(1), mask_tensor.stride(2),
             BLOCK_D=head_dim_padded,
+            BLOCK_Q=16, BLOCK_K=16, BLOCK_D=head_dim_padded,
             IS_CAUSAL=is_causal, HAS_MASK=HAS_MASK)
         # print(f"Flash attention best config: {flash_attention_kernel.best_config}")
         # scores_2d = scores.reshape(batch * num_heads * seq_q, seq_k_padded)

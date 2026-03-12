@@ -15,12 +15,12 @@ if _dir not in sys.path:
     sys.path.insert(0, _dir)
 
 from . import layers
-
-layers.Linear.BACKEND = "cublas"
-layers.MLP.FUSED = False
-layers.EncoderMLP.FUSED = False
-
 from . import model
 from . import rope
 from . import conv
 from . import weight_loader
+
+import layers as _layers_direct
+_layers_direct.Linear.BACKEND = "triton"
+_layers_direct.MLP.FUSED = False
+_layers_direct.EncoderMLP.FUSED = False

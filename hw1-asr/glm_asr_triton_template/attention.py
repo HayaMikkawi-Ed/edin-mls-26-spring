@@ -379,7 +379,7 @@ def next_power_of_two(x: int) -> int:
     return 1 << (x - 1).bit_length() if x > 0 else 1
 
 
-MAX_ATTENTION_DIM = 256
+MAX_ATTENTION_DIM = 2048
 
 
 def scaled_dot_product_attention(

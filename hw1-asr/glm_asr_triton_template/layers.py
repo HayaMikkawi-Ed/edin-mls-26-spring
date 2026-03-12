@@ -180,13 +180,6 @@ def silu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     y = x * sigmoid
     tl.store(y_ptr + offs, y, mask=mask)
 
-@triton.autotune(
-    configs=[
-        triton.Config({'BLOCK_M': 64,  'BLOCK_N': 64,  'BLOCK_K': 32}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64,  'BLOCK_K': 32}, num_warps=4, num_stages=3),
-    ],
-    key=['M', 'N', 'K'],
-)
 @triton.jit
 def linear_kernel_tf32(
     a_ptr,
@@ -749,7 +742,6 @@ class Linear:
                 self._weight_t_padded = weight_t
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
-        print(f"inside call, {Linear.BACKEND}")
         if Linear.BACKEND in ("torch", "cublas"):
             return self._forward_torch(x)
         if Linear.BACKEND == "triton":
@@ -810,14 +802,9 @@ class Linear:
             (M_padded, self._N_padded), dtype=torch.float32, device=x.device
         )
 
-        # grid = (
-        #     triton.cdiv(M_padded, self.TILE_M),
-        #     triton.cdiv(self._N_padded, self.TILE_N),
-        # )
-        print(f"BACKEND is: {Linear.BACKEND}")
-        grid = lambda meta: (
-            triton.cdiv(M_padded, meta['BLOCK_M']),
-            triton.cdiv(self._N_padded, meta['BLOCK_N']),
+        grid = (
+            triton.cdiv(M_padded, self.TILE_M),
+            triton.cdiv(self._N_padded, self.TILE_N),
         )
         linear_kernel_tf32[grid](
             x_padded,
@@ -832,11 +819,10 @@ class Linear:
             self._weight_t_padded.stride(1),
             output.stride(0),
             output.stride(1),
-            # BLOCK_M=self.TILE_M,
-            # BLOCK_N=self.TILE_N,
-            # BLOCK_K=self.TILE_K,
+            BLOCK_M=self.TILE_M,
+            BLOCK_N=self.TILE_N,
+            BLOCK_K=self.TILE_K,
         )
-        # print(f"linear_kernel_tf32 best config: {linear_kernel_tf32.best_config}")
         output = output[:M, :N]
 
         if self.has_bias and self.bias_param is not None:

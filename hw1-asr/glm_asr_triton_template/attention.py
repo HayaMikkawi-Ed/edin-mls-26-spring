@@ -420,7 +420,7 @@ def scaled_dot_product_attention(
             BLOCK_K=BLOCK_K,
             BLOCK_D=BLOCK_D,
             num_warps=4,    
-            num_stages=3,
+            num_stages=2,
         )
 
         return output.reshape(batch, num_heads, seq_q, head_dim).to(q.dtype)

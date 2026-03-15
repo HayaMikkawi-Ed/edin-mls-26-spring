@@ -402,8 +402,8 @@ def scaled_dot_product_attention(
             dtype=torch.float32, device=q.device
         )
 
-        BLOCK_Q = 16
-        BLOCK_K = 16
+        BLOCK_Q = 32
+        BLOCK_K = 32
         BLOCK_D = next_power_of_two(head_dim)
 
         grid = (batch * num_heads, triton.cdiv(seq_q, BLOCK_Q))
@@ -419,6 +419,8 @@ def scaled_dot_product_attention(
             BLOCK_Q=BLOCK_Q,
             BLOCK_K=BLOCK_K,
             BLOCK_D=BLOCK_D,
+            num_warps=4,    
+            num_stages=2,
         )
 
         return output.reshape(batch, num_heads, seq_q, head_dim).to(q.dtype)

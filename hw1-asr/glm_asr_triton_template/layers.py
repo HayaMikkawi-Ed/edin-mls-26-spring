@@ -704,8 +704,8 @@ def get_activation(name: str):
 class Linear:
     """Linear layer with switchable backend (torch or Triton)."""
 
-    TILE_M = 64
-    TILE_N = 64
+    TILE_M = 32
+    TILE_N = 32
     TILE_K = 32
 
     BACKEND = "torch"
@@ -912,7 +912,7 @@ class MLP:
     """MLP with SwiGLU gating using Triton."""
 
     FUSED = True
-    TILE_M, TILE_N, TILE_K = 64, 64, 32
+    TILE_M, TILE_N, TILE_K = 32, 32, 32
 
     def __init__(
         self,
@@ -1039,7 +1039,7 @@ class EncoderMLP:
     """Encoder MLP (no gating) using Triton."""
 
     FUSED = True
-    TILE_M, TILE_N, TILE_K = 64, 64, 32
+    TILE_M, TILE_N, TILE_K = 32, 32, 32
 
     def __init__(
         self,

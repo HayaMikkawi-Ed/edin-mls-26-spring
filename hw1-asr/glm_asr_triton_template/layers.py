@@ -180,13 +180,6 @@ def silu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     y = x * sigmoid
     tl.store(y_ptr + offs, y, mask=mask)
 
-@triton.autotune(
-    configs=[
-        triton.Config({'BLOCK_M': 64,  'BLOCK_N': 64, 'BLOCK_K': 32}, num_warps=4, num_stages=2),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 32}, num_warps=4, num_stages=3),
-    ],
-    key=['M', 'N', 'K'],
-)
 @triton.jit
 def linear_kernel_tf32(
     a_ptr,

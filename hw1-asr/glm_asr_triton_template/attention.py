@@ -23,6 +23,15 @@ def get_stream():
 # ============================================================================
 # Triton Kernels for Attention
 # ============================================================================
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_Q': 16, 'BLOCK_K': 16}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_Q': 32, 'BLOCK_K': 32}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_Q': 64, 'BLOCK_K': 32}, num_warps=4, num_stages=3),
+        triton.Config({'BLOCK_Q': 32, 'BLOCK_K': 64}, num_warps=8, num_stages=3),
+    ],
+    key=['seq_q', 'seq_k', 'head_dim'],
+)
 @triton.jit
 def flash_attention_kernel(
     q_ptr, k_ptr, v_ptr, output_ptr,
@@ -406,7 +415,7 @@ def scaled_dot_product_attention(
         BLOCK_K = 32
         BLOCK_D = next_power_of_two(head_dim)
 
-        grid = (batch * num_heads, triton.cdiv(seq_q, BLOCK_Q))
+        grid = lambda meta: (batch * num_heads, triton.cdiv(seq_q, meta['BLOCK_Q']))
         flash_attention_kernel[grid](
             q_flat, k_flat, v_flat, output,
             float(scale),
@@ -416,13 +425,11 @@ def scaled_dot_product_attention(
             v_flat.stride(0), v_flat.stride(1), v_flat.stride(2),
             output.stride(0), output.stride(1), output.stride(2),
             is_causal=1 if is_causal else 0,
-            BLOCK_Q=BLOCK_Q,
-            BLOCK_K=BLOCK_K,
             BLOCK_D=BLOCK_D,
             num_warps=4,    
             num_stages=2,
         )
-
+        print(f"Flash attention best config: {flash_attention_kernel.best_config}")
         return output.reshape(batch, num_heads, seq_q, head_dim).to(q.dtype)
 
     scores = torch.einsum("bnqd,bnkd->bnqk", q, k) * scale

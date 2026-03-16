@@ -711,7 +711,7 @@ def get_activation(name: str):
 class Linear:
     """Linear layer with switchable backend (torch or Triton)."""
 
-    TILE_M = 64
+    TILE_M = 128
     TILE_N = 64
     TILE_K = 32
 
@@ -810,9 +810,9 @@ class Linear:
             (M_padded, self._N_padded), dtype=torch.float32, device=x.device
         )
 
-        grid = lambda meta: (
-            triton.cdiv(M_padded, meta['BLOCK_M']),
-            triton.cdiv(self._N_padded, meta['BLOCK_N']),
+        grid = (
+            triton.cdiv(M_padded, self.TILE_M),
+            triton.cdiv(self._N_padded, self.TILE_N),
         )
         linear_kernel_tf32[grid](
             x_padded,
@@ -827,6 +827,9 @@ class Linear:
             self._weight_t_padded.stride(1),
             output.stride(0),
             output.stride(1),
+            BLOCK_M=self.TILE_M,
+            BLOCK_N=self.TILE_N,
+            BLOCK_K=self.TILE_K,
         )
         # print(f"Linear best config: {linear_kernel_tf32.best_config}")
         output = output[:M, :N]

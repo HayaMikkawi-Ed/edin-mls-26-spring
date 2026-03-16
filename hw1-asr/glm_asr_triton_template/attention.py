@@ -426,8 +426,6 @@ def scaled_dot_product_attention(
             output.stride(0), output.stride(1), output.stride(2),
             is_causal=1 if is_causal else 0,
             BLOCK_D=BLOCK_D,
-            num_warps=4,    
-            num_stages=2,
         )
         print(f"Flash attention best config: {flash_attention_kernel.best_config}")
         return output.reshape(batch, num_heads, seq_q, head_dim).to(q.dtype)

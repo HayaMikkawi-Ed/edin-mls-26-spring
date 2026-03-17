@@ -69,7 +69,7 @@ def attention_scores_kernel(
         q_ptr + pid_bh * stride_q0 + pid_q * stride_q1 + offs_d * stride_q2,
         mask=offs_d < head_dim,
         other=0.0,
-    )
+    ).to(tl.bfloat16)
     k = tl.load(
         k_ptr
         + pid_bh * stride_k0
@@ -77,8 +77,8 @@ def attention_scores_kernel(
         + offs_d[None, :] * stride_k2,
         mask=(offs_k[:, None] < seq_k) & (offs_d[None, :] < head_dim),
         other=0.0,
-    )
-    scores = tl.sum(k * q[None, :], axis=1) * scale
+    ).to(tl.bfloat16)
+    scores = (tl.sum(k * q[None, :], axis=1) * scale).to(tl.float32)
     tl.store(
         scores_ptr
         + pid_bh * stride_s0
@@ -315,20 +315,20 @@ def scaled_dot_product_attention(
     )
 
     if use_triton:
-        q_flat = q.reshape(batch * num_heads, seq_q, head_dim).to(torch.float32)
-        k_flat = k.reshape(batch * num_heads, seq_k, head_dim).to(torch.float32)
-        v_flat = v.reshape(batch * num_heads, seq_k, head_dim).to(torch.float32)
+        q_flat = q.reshape(batch * num_heads, seq_q, head_dim).to(torch.bfloat16)
+        k_flat = k.reshape(batch * num_heads, seq_k, head_dim).to(torch.bfloat16)
+        v_flat = v.reshape(batch * num_heads, seq_k, head_dim).to(torch.bfloat16)
 
         if seq_k_padded != seq_k or head_dim_padded != head_dim:
             k_padded = torch.zeros(
                 (batch * num_heads, seq_k_padded, head_dim_padded),
-                dtype=torch.float32,
+                dtype=torch.bfloat16,
                 device=q.device,
             )
             v_padded = torch.zeros_like(k_padded)
             q_padded = torch.zeros(
                 (batch * num_heads, seq_q, head_dim_padded),
-                dtype=torch.float32,
+                dtype=torch.bfloat16,
                 device=q.device,
             )
             k_padded[:, :seq_k, :head_dim] = k_flat

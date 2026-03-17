@@ -283,7 +283,7 @@ def rmsnorm_linear_fused_kernel(
                         mask= (offs_n[None, :] < N) & (offs_k[:, None] < K), 
                         other=0.0
                     ).to(tl.bfloat16) # (BLOCK_K x BLOCK_N)
-        acc += tl.dot(x_norm_bf16[None, :], w_lin)[0, :]
+        acc += tl.sum(x_norm_bf16[:, None] * w_lin, axis=0) 
         tl.store(
         y_ptr + pid * stride_ym + offs_n * stride_yn,
         acc,

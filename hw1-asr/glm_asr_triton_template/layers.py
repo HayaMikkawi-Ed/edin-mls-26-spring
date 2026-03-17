@@ -233,12 +233,12 @@ def linear_kernel_tf32(
             a_ptr + offs_m[:, None] * stride_am + (k + offs_k[None, :]) * stride_ak,
             mask=(offs_m[:, None] < M) & (k + offs_k[None, :] < K),
             other=0.0,
-        )
+        ).to(tl.bfloat16)
         b = tl.load(
             b_ptr + (k + offs_k[:, None]) * stride_bk + offs_n[None, :] * stride_bn,
             mask=(k + offs_k[:, None] < K) & (offs_n[None, :] < N),
             other=0.0,
-        )
+        ).to(tl.bfloat16)
         acc += tl.dot(a, b)
 
     tl.store(
@@ -281,12 +281,12 @@ def linear_gelu_kernel(
             a_ptr + offs_m[:, None] * stride_am + (k + offs_k[None, :]) * stride_ak,
             mask=(offs_m[:, None] < M) & (k + offs_k[None, :] < K),
             other=0.0,
-        )
+        ).to(tl.bfloat16)
         b = tl.load(
             b_ptr + (k + offs_k[:, None]) * stride_bk + offs_n[None, :] * stride_bn,
             mask=(k + offs_k[:, None] < K) & (offs_n[None, :] < N),
             other=0.0,
-        )
+        ).to(tl.bfloat16)
         acc += tl.dot(a, b)
 
     sqrt_2_over_pi = 0.7978845608028654
@@ -338,17 +338,17 @@ def swiglu_fused_kernel(
             a_ptr + offs_m[:, None] * stride_am + (k + offs_k[None, :]) * stride_ak,
             mask=(offs_m[:, None] < M) & (k + offs_k[None, :] < K),
             other=0.0,
-        )
+        ).to(tl.bfloat16)
         gate_w = tl.load(
             gate_ptr + (k + offs_k[:, None]) * stride_gk + offs_n[None, :] * stride_gn,
             mask=(k + offs_k[:, None] < K) & (offs_n[None, :] < N),
             other=0.0,
-        )
+        ).to(tl.bfloat16)
         up_w = tl.load(
             up_ptr + (k + offs_k[:, None]) * stride_uk + offs_n[None, :] * stride_un,
             mask=(k + offs_k[:, None] < K) & (offs_n[None, :] < N),
             other=0.0,
-        )
+        ).to(tl.bfloat16)
 
         gate_acc += tl.dot(a, gate_w)
         up_acc += tl.dot(a, up_w)
@@ -730,11 +730,11 @@ class Linear:
             self._K_padded = pad_to_multiple(K, self.TILE_K)
             self._N_padded = pad_to_multiple(N, self.TILE_N)
 
-            weight_t = self.weight.t().contiguous()
+            weight_t = self.weight.t().to(torch.bfloat16).contiguous()
             if self._K_padded > K or self._N_padded > N:
                 weight_pad = torch.zeros(
                     (self._K_padded, self._N_padded),
-                    dtype=torch.float32,
+                    dtype=torch.bfloat16,
                     device=weight_t.device,
                 )
                 weight_pad[:K, :N] = weight_t
@@ -780,7 +780,7 @@ class Linear:
         K = self.in_features
         N = self.out_features
 
-        x_2d = x.reshape(M, K).to(torch.float32).contiguous()
+        x_2d = x.reshape(M, K).to(torch.bfloat16).contiguous()
 
         if self.weight.device != x.device:
             self.weight = self.weight.to(x.device)
@@ -792,7 +792,7 @@ class Linear:
         if M_padded > M or self._K_padded > K:
             x_padded = torch.zeros(
                 (M_padded, self._K_padded),
-                dtype=torch.float32,
+                dtype=torch.bfloat16,
                 device=x.device,
             )
             x_padded[:M, :K] = x_2d
@@ -944,8 +944,8 @@ class MLP:
         if self._gate_weight_t is None and self.use_gating:
             if self.gate_proj.weight.device != self.up_proj.weight.device:
                 self.up_proj.weight = self.up_proj.weight.to(self.gate_proj.weight.device)
-            self._gate_weight_t = self.gate_proj.weight.t().contiguous()
-            self._up_weight_t = self.up_proj.weight.t().contiguous()
+            self._gate_weight_t = self.gate_proj.weight.t().to(torch.bfloat16).contiguous()
+            self._up_weight_t = self.up_proj.weight.t().to(torch.bfloat16).contiguous()
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if self.use_gating and MLP.FUSED and x.is_cuda:
@@ -969,7 +969,7 @@ class MLP:
         self._prepare_fused_weights()
 
         orig_shape = x.shape
-        x_2d = x.reshape(-1, self.hidden_size).to(torch.float32).contiguous()
+        x_2d = x.reshape(-1, self.hidden_size).to(torch.bfloat16).contiguous()
         M = x_2d.shape[0]
         K = self.hidden_size
         N = self.intermediate_size
@@ -980,7 +980,7 @@ class MLP:
 
         if M != M_pad or K != K_pad:
             x_padded = torch.zeros(
-                (M_pad, K_pad), dtype=torch.float32, device=x.device
+                (M_pad, K_pad), dtype=torch.bfloat16, device=x.device
             )
             x_padded[:M, :K] = x_2d
         else:
@@ -988,11 +988,11 @@ class MLP:
 
         if K != K_pad or N != N_pad:
             gate_w_padded = torch.zeros(
-                (K_pad, N_pad), dtype=torch.float32, device=x.device
+                (K_pad, N_pad), dtype=torch.bfloat16, device=x.device
             )
             gate_w_padded[:K, :N] = self._gate_weight_t
             up_w_padded = torch.zeros(
-                (K_pad, N_pad), dtype=torch.float32, device=x.device
+                (K_pad, N_pad), dtype=torch.bfloat16, device=x.device
             )
             up_w_padded[:K, :N] = self._up_weight_t
         else:
@@ -1061,7 +1061,7 @@ class EncoderMLP:
     def _prepare_fused_weights(self):
         """Prepare pre-transposed weights for fused kernel."""
         if self._fc1_weight_t is None:
-            self._fc1_weight_t = self.fc1.weight.t().contiguous()
+            self._fc1_weight_t = self.fc1.weight.t().to(torch.bfloat16).contiguous()
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if EncoderMLP.FUSED and self.activation == "gelu" and x.is_cuda:
@@ -1080,7 +1080,7 @@ class EncoderMLP:
         self._prepare_fused_weights()
 
         orig_shape = x.shape
-        x_2d = x.reshape(-1, self.hidden_size).to(torch.float32).contiguous()
+        x_2d = x.reshape(-1, self.hidden_size).to(torch.bfloat16).contiguous()
         M = x_2d.shape[0]
         K = self.hidden_size
         N = self.intermediate_size
@@ -1091,7 +1091,7 @@ class EncoderMLP:
 
         if M != M_pad or K != K_pad:
             x_padded = torch.zeros(
-                (M_pad, K_pad), dtype=torch.float32, device=x.device
+                (M_pad, K_pad), dtype=torch.bfloat16, device=x.device
             )
             x_padded[:M, :K] = x_2d
         else:
@@ -1099,7 +1099,7 @@ class EncoderMLP:
 
         if K != K_pad or N != N_pad:
             fc1_w_padded = torch.zeros(
-                (K_pad, N_pad), dtype=torch.float32, device=x.device
+                (K_pad, N_pad), dtype=torch.bfloat16, device=x.device
             )
             fc1_w_padded[:K, :N] = self._fc1_weight_t
         else:

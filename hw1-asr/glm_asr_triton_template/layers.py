@@ -832,7 +832,7 @@ class Linear:
             output.stride(0),
             output.stride(1),
         )
-        print(f"Linear best config: {linear_kernel_tf32.best_config}")
+        # print(f"Linear best config: {linear_kernel_tf32.best_config}")
         output = output[:M, :N]
 
         if self.has_bias and self.bias_param is not None:

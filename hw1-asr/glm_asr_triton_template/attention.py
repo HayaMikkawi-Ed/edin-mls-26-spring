@@ -59,7 +59,7 @@ def flash_attention_kernel(
     q = tl.load(
         q_ptr + pid_bh * stride_q0 + q_offsets[:, None] * stride_q1 + d_offsets[None, :],
         mask=q_mask[:, None] & d_mask[None, :], other=0.0
-    )
+    ).to(tl.bfloat16)
 
     # Online softmax state
     m = tl.full((BLOCK_Q,), float('-inf'), dtype=tl.float32)
@@ -75,7 +75,7 @@ def flash_attention_kernel(
         k = tl.load(
             k_ptr + pid_bh * stride_k0 + k_offsets[:, None] * stride_k1 + d_offsets[None, :],
             mask=k_mask[:, None] & d_mask[None, :], other=0.0
-        )
+        ).to(tl.bfloat16)
 
         # Compute QK^T scores
         scores = tl.dot(q, tl.trans(k)) * scale  # (BLOCK_Q, BLOCK_K)
@@ -97,11 +97,11 @@ def flash_attention_kernel(
         v = tl.load(
             v_ptr + pid_bh * stride_v0 + k_offsets[:, None] * stride_v1 + d_offsets[None, :],
             mask=k_mask[:, None] & d_mask[None, :], other=0.0
-        )
+        ).to(tl.bfloat16)
 
         # Update accumulator
         l = alpha * l + tl.sum(scores_exp, axis=1)
-        acc = alpha[:, None] * acc + tl.dot(scores_exp, v)
+        acc = alpha[:, None] * acc + tl.dot(scores_exp.to(tl.bfloat16), v)
         m = m_new
 
     # Normalize

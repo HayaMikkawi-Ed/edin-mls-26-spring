@@ -222,12 +222,12 @@ class DecoderLayer:
         self.rope = rope
 
         # Layer norms
-        # self.input_layernorm = RMSNorm(hidden_size)
+        self.input_layernorm = RMSNorm(hidden_size)
         self.input_layernorm_q = RMSNormLinear(hidden_size, num_heads * self.head_dim)
         self.post_attention_layernorm = RMSNorm(hidden_size)
 
         # Attention projections (no bias for Llama-style)
-        # self.q_proj = Linear(hidden_size, num_heads * self.head_dim, bias=False)
+        self.q_proj = Linear(hidden_size, num_heads * self.head_dim, bias=False)
         self.k_proj = Linear(hidden_size, num_kv_heads * self.head_dim, bias=False)
         self.v_proj = Linear(hidden_size, num_kv_heads * self.head_dim, bias=False)
         self.o_proj = Linear(num_heads * self.head_dim, hidden_size, bias=False)
@@ -386,7 +386,11 @@ class DecoderLayer:
         hidden_states = residual + hidden_states
 
         return hidden_states, new_cache_pos
-
+    def sync_fused_weights(self):
+        """Sync weights from input_layernorm and q_proj into fused kernel."""
+        self.input_layernorm_q.norm_weight = self.input_layernorm.weight
+        self.input_layernorm_q.linear.weight = self.q_proj.weight
+        self.input_layernorm_q._w_lin_t = None  # invalidate cache
 
 class TextDecoder:
     """Llama-style text decoder using Torch + Triton."""

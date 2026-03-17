@@ -243,6 +243,8 @@ def load_weights_from_hf_model(model, hf_model) -> None:
     )
 
     print("Weight loading complete!")
+    for layer in model.text_decoder.layers:
+        layer.sync_fused_weights()
 
 
 def load_model_from_hf(model_name: str = "zai-org/GLM-ASR-Nano-2512"):

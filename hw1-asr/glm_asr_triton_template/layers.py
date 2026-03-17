@@ -247,6 +247,50 @@ def linear_kernel_tf32(
         mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
     )
     
+@triton.jit
+def rmsnorm_linear_fused_kernel(
+    x_ptr,        # input (M x K)
+    w_norm_ptr,   # RMSNorm weight
+    w_lin_ptr,    # Linear weight (N, K) — will be accessed transposed
+    x_norm_ptr,   # output: normalized x (M, K)
+    y_ptr,        # output: linear projection (M, N)
+    N, K,
+    eps,
+    stride_x, 
+    stride_x_norm,
+    BLOCK_K: tl.constexpr,
+    stride_wk,
+    stride_wn,
+    stride_yn,
+    stride_ym,
+    BLOCK_N: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs_k = tl.arange(0, BLOCK_K)
+    mask = offs_k < K
+    x = tl.load(x_ptr + pid * stride_x + offs_k, mask=mask, other=0.0)
+    w = tl.load(w_norm_ptr + offs_k, mask=mask, other=0.0)
+    var = tl.sum(x * x, axis=0) / K
+    x_norm = x * tl.rsqrt(var + eps)
+    x_norm = x_norm * w
+    tl.store(x_norm_ptr + pid * stride_x_norm + offs_k, x_norm, mask=mask)
+    x_norm_bf16 = x_norm.to(tl.bfloat16) # (1 x BLOCK_K)
+    for n_start in range(0, N, BLOCK_N):
+        acc = tl.zeros((BLOCK_N, ), dtype=tl.float32)
+        offs_n = n_start + tl.arange(0, BLOCK_N)
+        w_lin = tl.load(w_lin_ptr + offs_n[None, :] * stride_wn +
+                        offs_k[:, None] * stride_wk, 
+                        mask= (offs_n[None, :] < N) & (offs_k[:, None] < K), 
+                        other=0.0
+                    ).to(tl.bfloat16) # (BLOCK_K x BLOCK_N)
+        acc += tl.dot(x_norm_bf16[None, :], w_lin)[0, :]
+        tl.store(
+        y_ptr + pid * stride_ym + offs_n * stride_yn,
+        acc,
+        mask=offs_n < N
+        )
+
+
 
 
 @triton.jit
@@ -834,6 +878,63 @@ class Linear:
 
         return output.reshape(*batch_dims, self.out_features)
 
+class RMSNormLinear:
+    """Fused RMSNorm + Linear projection."""
+    
+    def __init__(self, hidden_size: int, out_features: int, eps: float = 1e-6):
+        self.hidden_size = hidden_size
+        self.out_features = out_features
+        self.eps = eps
+        
+        # RMSNorm weight
+        self.norm_weight = torch.ones(hidden_size, dtype=torch.float32)
+        
+        # Linear weight
+        self.linear = Linear(hidden_size, out_features, bias=False)
+        
+        self._w_lin_t = None  # cached transposed weight
+    
+    def _ensure_weight_prepared(self, device):
+        if self._w_lin_t is None:
+            self._w_lin_t = self.linear.weight.t().to(torch.bfloat16).contiguous()
+    
+    def __call__(self, x: torch.Tensor):
+        batch_dims = x.shape[:-1]
+        M = int(np.prod(batch_dims))
+        K = self.hidden_size
+        N = self.out_features
+        BLOCK_K = next_power_of_two(K)
+        BLOCK_N = 64
+        
+        if self.norm_weight.device != x.device:
+            self.norm_weight = self.norm_weight.to(x.device)
+            self._w_lin_t = None
+        if self.linear.weight.device != x.device:
+            self.linear.weight = self.linear.weight.to(x.device)
+            self._w_lin_t = None
+        self._ensure_weight_prepared(x.device)
+        
+        x_flat = x.reshape(M, K).to(torch.float32).contiguous()
+        x_norm_out = torch.empty((M, K), dtype=torch.float32, device=x.device)
+        y_out = torch.empty((M, N), dtype=torch.float32, device=x.device)
+        
+        rmsnorm_linear_fused_kernel[(M,)](
+            x_flat, self.norm_weight, self._w_lin_t,
+            x_norm_out, y_out,
+            N, K, self.eps,
+            x_flat.stride(0),
+            x_norm_out.stride(0),
+            BLOCK_K=BLOCK_K,
+            stride_wk=self._w_lin_t.stride(0),
+            stride_wn=self._w_lin_t.stride(1),
+            stride_yn=y_out.stride(1),
+            stride_ym=y_out.stride(0),
+            BLOCK_N=BLOCK_N,
+        )
+        
+        x_norm = x_norm_out.reshape(*batch_dims, K)
+        y = y_out.reshape(*batch_dims, N)
+        return y, x_norm  # return both Q projection and normalized x
 
 class Embedding:
     """Embedding layer using Triton."""

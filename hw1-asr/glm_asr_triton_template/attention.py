@@ -160,7 +160,7 @@ def attention_scores_kernel(
         q_ptr + pid_bh * stride_q0 + pid_q * stride_q1 + offs_d * stride_q2,
         mask=offs_d < head_dim,
         other=0.0,
-    )
+    ).to(tl.bfloat16)
     k = tl.load(
         k_ptr
         + pid_bh * stride_k0
@@ -168,8 +168,8 @@ def attention_scores_kernel(
         + offs_d[None, :] * stride_k2,
         mask=(offs_k[:, None] < seq_k) & (offs_d[None, :] < head_dim),
         other=0.0,
-    )
-    scores = tl.sum(k * q[None, :], axis=1) * scale
+    ).to(tl.bfloat16)
+    scores = (tl.sum(k * q[None, :], axis=1) * scale).to(tl.float32)
     tl.store(
         scores_ptr
         + pid_bh * stride_s0
@@ -402,9 +402,9 @@ def scaled_dot_product_attention(
     use_triton = q.is_cuda and seq_q >= 16 and seq_k >= 16
 
     if use_triton:
-        q_flat = q.reshape(batch * num_heads, seq_q, head_dim).to(torch.float32).contiguous()
-        k_flat = k.reshape(batch * num_heads, seq_k, head_dim).to(torch.float32).contiguous()
-        v_flat = v.reshape(batch * num_heads, seq_k, head_dim).to(torch.float32).contiguous()
+        q_flat = q.reshape(batch * num_heads, seq_q, head_dim).to(torch.bfloat16).contiguous()
+        k_flat = k.reshape(batch * num_heads, seq_k, head_dim).to(torch.bfloat16).contiguous()
+        v_flat = v.reshape(batch * num_heads, seq_k, head_dim).to(torch.bfloat16).contiguous()
 
         output = torch.zeros(
             (batch * num_heads, seq_q, head_dim),

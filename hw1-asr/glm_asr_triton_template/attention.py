@@ -390,7 +390,8 @@ def scaled_dot_product_attention(
     seq_k_padded = next_power_of_two(seq_k)
     head_dim_padded = next_power_of_two(head_dim)
 
-    use_triton = q.is_cuda and seq_q >= 16 and seq_k >= 16
+    # use_triton = q.is_cuda and seq_q >= 16 and seq_k >= 16
+    use_triton = False
 
     if use_triton:
         q_flat = q.reshape(batch * num_heads, seq_q, head_dim).to(torch.float32).contiguous()

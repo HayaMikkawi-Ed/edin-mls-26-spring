@@ -2,16 +2,21 @@
 Triton Rotary Position Embeddings (RoPE)
 
 FUSION: apply_rotary_pos_emb
-  Previously: _apply_rope_single(q) then _apply_rope_single(k)
-    - cos/sin loaded from HBM twice
-    - two separate kernel sequences
+  One kernel handles both Q and K rotation regardless of head counts (GQA).
 
-  Now: rope_qk_fused_kernel processes Q and K together
-    - cos/sin loaded from HBM once, shared for both Q and K
-    - one kernel launch instead of two
+  Grid: (num_q_heads, seq_len)
+  - Every program loads cos/sin once for its sequence position.
+  - Every program rotates its Q head.
+  - Programs where pid_head < num_kv_heads ALSO rotate the corresponding K head,
+    reusing the already-loaded cos/sin with zero extra HBM reads.
 
-  API is unchanged — model.py calls apply_rotary_pos_emb(q, k, cos, sin)
-  exactly as before.
+  This activates for BOTH:
+    audio encoder  (num_q_heads == num_kv_heads == 20)
+    text decoder   (num_q_heads=28, num_kv_heads=4)  ← previously fell back to PyTorch
+
+  HBM savings vs original two-call PyTorch path (per layer per token):
+    cos/sin reads: (num_q_heads + num_kv_heads) × seq_len × half_dim × 4B
+                 →  num_q_heads               × seq_len × half_dim × 4B
 """
 
 from typing import Optional, Tuple
@@ -22,14 +27,13 @@ import triton.language as tl
 
 
 def get_stream():
-    """Get current CUDA stream pointer."""
     if torch.cuda.is_available():
         return torch.cuda.current_stream().cuda_stream
     return None
 
 
 # ============================================================================
-# Triton Kernels for RoPE
+# Triton Kernels
 # ============================================================================
 
 @triton.jit
@@ -53,7 +57,6 @@ def compute_freqs_kernel(
     Grid: (seq_len,)
     """
     pid = tl.program_id(0)
-
     offs = tl.arange(0, BLOCK)
     mask = offs < half_dim
 
@@ -65,177 +68,87 @@ def compute_freqs_kernel(
     sin_half = tl.sin(freqs)
 
     tl.store(cos_ptr + pid * stride_cos0 + offs * stride_cos1, cos_half, mask=mask)
-    tl.store(
-        cos_ptr + pid * stride_cos0 + (offs + half_dim) * stride_cos1,
-        cos_half,
-        mask=mask,
-    )
+    tl.store(cos_ptr + pid * stride_cos0 + (offs + half_dim) * stride_cos1, cos_half, mask=mask)
     tl.store(sin_ptr + pid * stride_sin0 + offs * stride_sin1, sin_half, mask=mask)
-    tl.store(
-        sin_ptr + pid * stride_sin0 + (offs + half_dim) * stride_sin1,
-        sin_half,
-        mask=mask,
-    )
+    tl.store(sin_ptr + pid * stride_sin0 + (offs + half_dim) * stride_sin1, sin_half, mask=mask)
 
 
 @triton.jit
 def rope_qk_fused_kernel(
-    q_ptr,
-    k_ptr,
-    cos_ptr,
-    sin_ptr,
+    q_ptr,          # [num_q_heads,  seq_len, head_dim]  (batch indexed out by caller)
+    k_ptr,          # [num_kv_heads, seq_len, head_dim]
+    cos_ptr,        # [seq_len, half_dim]
+    sin_ptr,        # [seq_len, half_dim]
     q_out_ptr,
     k_out_ptr,
-    seq_len,
-    half_dim,
-    rotary_dim,
-    head_dim,
-    stride_q0,   # batch
-    stride_q1,   # head
-    stride_q2,   # seq
-    stride_q3,   # dim
-    stride_k0,
-    stride_k1,
-    stride_k2,
-    stride_k3,
-    stride_cos0, # seq
-    stride_cos1, # dim
-    stride_o0,   # batch  (same layout for q_out and k_out)
-    stride_o1,   # head
-    stride_o2,   # seq
-    stride_o3,   # dim
-    BLOCK: tl.constexpr,   # >= half_dim, power of two
+    num_kv_heads,   # scalar: number of KV heads (may be < num_q_heads for GQA)
+    half_dim,       # scalar: rotary_dim // 2
+    head_dim,       # scalar: full head dimension
+    stride_qh,      # Q strides
+    stride_qs,
+    stride_qd,
+    stride_kh,      # K strides
+    stride_ks,
+    stride_kd,
+    stride_cs,      # cos/sin strides (same layout)
+    stride_cd,
+    stride_oh,      # output strides (q_out and k_out share layout with their inputs)
+    stride_os,
+    stride_od,
+    BLOCK: tl.constexpr,  # >= half_dim, power of two
 ):
     """
-    FUSION: Apply RoPE to Q and K in one kernel.
-    Grid: (batch * (num_q_heads + num_kv_heads), seq_len)
+    GQA-aware fused RoPE for Q and K.
+    Grid: (num_q_heads, seq_len)
 
-    cos/sin are read once per program and applied to whichever of Q or K
-    this program instance is responsible for.
+    Each program:
+      1. Loads cos/sin for its sequence position (1 read, shared below).
+      2. Rotates Q[pid_head, pid_seq, :].
+      3. If pid_head < num_kv_heads: also rotates K[pid_head, pid_seq, :]
+         using the same cos/sin — zero extra HBM reads for position data.
 
-    Savings vs two separate _apply_rope_single calls:
-      - cos/sin HBM reads halved  (seq_len * rotary_dim * 4 bytes * 2 → * 1)
-      - kernel launches halved    (2 → 1)
+    For standard MHA (num_q_heads == num_kv_heads):
+      every program does both Q and K → same as before.
+    For GQA (num_kv_heads < num_q_heads, e.g. 4 vs 28):
+      the first 4 programs also handle K; the remaining 24 only handle Q.
+      cos/sin are still loaded only once per program instead of separately
+      for Q and K in the original two-call path.
     """
-    pid_hs = tl.program_id(0)   # combined head index (Q heads first, then K heads)
-    pid_s  = tl.program_id(1)   # sequence position
+    pid_h = tl.program_id(0)   # Q head index
+    pid_s = tl.program_id(1)   # sequence position
 
     offs = tl.arange(0, BLOCK)
-    mask_half = offs < half_dim
+    mask = offs < half_dim
 
-    # ── Load cos/sin for this sequence position (shared for Q and K) ──────────
-    cos = tl.load(
-        cos_ptr + pid_s * stride_cos0 + offs * stride_cos1,
-        mask=mask_half,
-        other=1.0,
-    )  # [half_dim]
-    sin = tl.load(
-        sin_ptr + pid_s * stride_cos0 + offs * stride_cos1,
-        mask=mask_half,
-        other=0.0,
-    )  # [half_dim]
+    # ── Step 1: load cos/sin (one read, reused for both Q and K) ─────────────
+    cos = tl.load(cos_ptr + pid_s * stride_cs + offs * stride_cd, mask=mask, other=1.0)
+    sin = tl.load(sin_ptr + pid_s * stride_cs + offs * stride_cd, mask=mask, other=0.0)
 
-    # ── Determine whether we are processing a Q or K head ────────────────────
-    # The grid dimension 0 encodes: Q heads [0, num_q_heads), K heads [num_q_heads, ...)
-    # The caller sets num_total_heads = num_q_heads + num_kv_heads and passes
-    # q and k base pointers separately.  We derive the actual head index and
-    # select the right pointer inside the kernel.
-    #
-    # To keep the kernel generic without a num_q_heads argument, the caller
-    # sets q_ptr = NULL sentinel for K-head programs and vice versa.
-    # Instead, we split the grid and use two kernel launches with the same
-    # kernel body — but that defeats the fusion purpose.
-    #
-    # Simplest correct approach: launch one kernel per tensor (Q and K) but
-    # share the compiled PTX and amortise cos/sin reuse across a larger grid.
-    # The actual fusion benefit (one cos/sin read instead of two) is achieved
-    # by keeping BOTH in a single grid where each thread block loads cos/sin
-    # once and rotates its assigned head.
-    #
-    # Here we implement the Q path; a second launch does K.  The two launches
-    # share the Triton JIT-compiled PTX so compile overhead is paid once.
+    # ── Step 2: rotate Q[pid_h] ───────────────────────────────────────────────
+    base_q = pid_h * stride_qh + pid_s * stride_qs
+    x1 = tl.load(q_ptr + base_q + offs            * stride_qd, mask=mask, other=0.0)
+    x2 = tl.load(q_ptr + base_q + (offs + half_dim) * stride_qd, mask=mask, other=0.0)
 
-    # ── Load x1 (first half) and x2 (second half) of this head's vector ──────
-    x1 = tl.load(
-        q_ptr
-        + pid_hs * stride_q1
-        + pid_s  * stride_q2
-        + offs   * stride_q3,
-        mask=mask_half,
-        other=0.0,
-    )
-    x2 = tl.load(
-        q_ptr
-        + pid_hs * stride_q1
-        + pid_s  * stride_q2
-        + (offs + half_dim) * stride_q3,
-        mask=mask_half,
-        other=0.0,
-    )
+    base_qo = pid_h * stride_oh + pid_s * stride_os
+    tl.store(q_out_ptr + base_qo + offs            * stride_od, x1 * cos - x2 * sin, mask=mask)
+    tl.store(q_out_ptr + base_qo + (offs + half_dim) * stride_od, x2 * cos + x1 * sin, mask=mask)
 
-    # ── Rotation ──────────────────────────────────────────────────────────────
-    x1_rot = x1 * cos - x2 * sin
-    x2_rot = x2 * cos + x1 * sin
+    # ── Step 3: rotate K[pid_h] only when this head has a KV counterpart ──────
+    # Triton scalar comparison: generates a predicated branch in PTX.
+    # Programs with pid_h >= num_kv_heads skip the K load/store entirely.
+    if pid_h < num_kv_heads:
+        base_k  = pid_h * stride_kh + pid_s * stride_ks
+        base_ko = pid_h * stride_oh + pid_s * stride_os   # k_out has same layout as k
 
-    # ── Store rotated values ──────────────────────────────────────────────────
-    tl.store(
-        q_out_ptr
-        + pid_hs * stride_o1
-        + pid_s  * stride_o2
-        + offs   * stride_o3,
-        x1_rot,
-        mask=mask_half,
-    )
-    tl.store(
-        q_out_ptr
-        + pid_hs * stride_o1
-        + pid_s  * stride_o2
-        + (offs + half_dim) * stride_o3,
-        x2_rot,
-        mask=mask_half,
-    )
+        x1k = tl.load(k_ptr + base_k + offs            * stride_kd, mask=mask, other=0.0)
+        x2k = tl.load(k_ptr + base_k + (offs + half_dim) * stride_kd, mask=mask, other=0.0)
 
-    # ── Load K for same head index (reusing cos/sin already in registers) ─────
-    x1k = tl.load(
-        k_ptr
-        + pid_hs * stride_k1
-        + pid_s  * stride_k2
-        + offs   * stride_k3,
-        mask=mask_half,
-        other=0.0,
-    )
-    x2k = tl.load(
-        k_ptr
-        + pid_hs * stride_k1
-        + pid_s  * stride_k2
-        + (offs + half_dim) * stride_k3,
-        mask=mask_half,
-        other=0.0,
-    )
-
-    x1k_rot = x1k * cos - x2k * sin
-    x2k_rot = x2k * cos + x1k * sin
-
-    tl.store(
-        k_out_ptr
-        + pid_hs * stride_o1
-        + pid_s  * stride_o2
-        + offs   * stride_o3,
-        x1k_rot,
-        mask=mask_half,
-    )
-    tl.store(
-        k_out_ptr
-        + pid_hs * stride_o1
-        + pid_s  * stride_o2
-        + (offs + half_dim) * stride_o3,
-        x2k_rot,
-        mask=mask_half,
-    )
+        tl.store(k_out_ptr + base_ko + offs            * stride_od, x1k * cos - x2k * sin, mask=mask)
+        tl.store(k_out_ptr + base_ko + (offs + half_dim) * stride_od, x2k * cos + x1k * sin, mask=mask)
 
 
 # ============================================================================
-# RoPE Classes
+# RotaryEmbedding class (unchanged)
 # ============================================================================
 
 class RotaryEmbedding:
@@ -260,50 +173,40 @@ class RotaryEmbedding:
             base ** (torch.arange(0, self.rotary_dim, 2, dtype=torch.float32) / self.rotary_dim)
         )
         self.inv_freq = inv_freq
-
         self._update_cache(max_position_embeddings)
 
     def _update_cache(self, seq_len: int, device: Optional[torch.device] = None):
-        """Pre-compute cos and sin using Triton kernel."""
         self.max_seq_len_cached = seq_len
         half_dim = self.rotary_dim // 2
         if device is None:
             device = self.inv_freq.device
 
-        positions = torch.arange(seq_len, dtype=torch.float32, device=device)
-        cos_cache = torch.empty((seq_len, self.rotary_dim), dtype=torch.float32, device=device)
-        sin_cache = torch.empty((seq_len, self.rotary_dim), dtype=torch.float32, device=device)
+        positions  = torch.arange(seq_len, dtype=torch.float32, device=device)
+        cos_cache  = torch.empty((seq_len, self.rotary_dim), dtype=torch.float32, device=device)
+        sin_cache  = torch.empty((seq_len, self.rotary_dim), dtype=torch.float32, device=device)
 
         if device.type == "cuda":
             if self.inv_freq.device != device:
                 self.inv_freq = self.inv_freq.to(device)
-
             block = triton.next_power_of_2(half_dim)
             compute_freqs_kernel[(seq_len,)](
-                positions,
-                self.inv_freq,
-                cos_cache,
-                sin_cache,
-                seq_len,
-                half_dim,
-                positions.stride(0),
-                self.inv_freq.stride(0),
-                cos_cache.stride(0),
-                cos_cache.stride(1),
-                sin_cache.stride(0),
-                sin_cache.stride(1),
+                positions, self.inv_freq, cos_cache, sin_cache,
+                seq_len, half_dim,
+                positions.stride(0), self.inv_freq.stride(0),
+                cos_cache.stride(0), cos_cache.stride(1),
+                sin_cache.stride(0), sin_cache.stride(1),
                 BLOCK=block,
             )
         else:
             if self.inv_freq.device != device:
                 self.inv_freq = self.inv_freq.to(device)
-            freqs = positions[:, None] * self.inv_freq[None, :]
-            cos_half = torch.cos(freqs)
-            sin_half = torch.sin(freqs)
-            cos_cache[:, :half_dim] = cos_half
-            cos_cache[:, half_dim : half_dim * 2] = cos_half
-            sin_cache[:, :half_dim] = sin_half
-            sin_cache[:, half_dim : half_dim * 2] = sin_half
+            freqs     = positions[:, None] * self.inv_freq[None, :]
+            cos_half  = torch.cos(freqs)
+            sin_half  = torch.sin(freqs)
+            cos_cache[:, :half_dim]            = cos_half
+            cos_cache[:, half_dim:half_dim*2]  = cos_half
+            sin_cache[:, :half_dim]            = sin_half
+            sin_cache[:, half_dim:half_dim*2]  = sin_half
 
         self.cos_cached = cos_cache
         self.sin_cached = sin_cache
@@ -313,7 +216,6 @@ class RotaryEmbedding:
         x: torch.Tensor,
         position_ids: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Get cos and sin for given positions."""
         seq_len = x.shape[-2]
 
         if seq_len > self.max_seq_len_cached:
@@ -334,8 +236,11 @@ class RotaryEmbedding:
         return cos, sin
 
 
+# ============================================================================
+# Helpers
+# ============================================================================
+
 def next_power_of_two(x: int) -> int:
-    """Return the smallest power of two >= x."""
     return 1 << (x - 1).bit_length() if x > 0 else 1
 
 
@@ -349,24 +254,27 @@ def _apply_rope_single(
     half_dim: int,
     head_dim: int,
 ) -> torch.Tensor:
-    """Apply RoPE to a single tensor (Q or K) using Torch. Fallback only."""
+    """PyTorch fallback for a single tensor."""
     cos = cos[:x.shape[-2]]
     sin = sin[:x.shape[-2]]
 
     x1 = x[..., :half_dim]
-    x2 = x[..., half_dim : half_dim * 2]
+    x2 = x[..., half_dim:half_dim * 2]
 
-    cos_expanded = cos[None, None, :, :]
-    sin_expanded = sin[None, None, :, :]
+    cos_e = cos[None, None, :, :]
+    sin_e = sin[None, None, :, :]
 
-    x1_rot = x1 * cos_expanded - x2 * sin_expanded
-    x2_rot = x2 * cos_expanded + x1 * sin_expanded
+    x1_rot = x1 * cos_e - x2 * sin_e
+    x2_rot = x2 * cos_e + x1 * sin_e
 
     if head_dim > half_dim * 2:
-        x_pass = x[..., half_dim * 2 :]
-        return torch.cat([x1_rot, x2_rot, x_pass], dim=-1)
+        return torch.cat([x1_rot, x2_rot, x[..., half_dim * 2:]], dim=-1)
     return torch.cat([x1_rot, x2_rot], dim=-1)
 
+
+# ============================================================================
+# Public API  (model.py calls this — signature unchanged)
+# ============================================================================
 
 def apply_rotary_pos_emb(
     q: torch.Tensor,
@@ -378,14 +286,13 @@ def apply_rotary_pos_emb(
     """
     Apply rotary position embeddings to Q and K.
 
-    FUSION: Q and K are rotated in a single Triton kernel when possible.
-    cos/sin are loaded from HBM once and reused for both Q and K rotations,
-    halving memory traffic vs the original two-call approach.
+    FUSION: single kernel handles both Q and K for any head-count ratio,
+    including GQA (num_q_heads > num_kv_heads).
 
-    API is identical to the original — model.py requires no changes.
+    API is identical to original — model.py requires no changes.
     """
     batch, num_q_heads, seq_len, head_dim = q.shape
-    _, num_kv_heads, _, _ = k.shape
+    _,     num_kv_heads, _,       _       = k.shape
 
     if rotary_dim is None:
         rotary_dim = head_dim
@@ -399,72 +306,52 @@ def apply_rotary_pos_emb(
     cos = cos.to(torch.float32).contiguous()
     sin = sin.to(torch.float32).contiguous()
 
-    # ── Triton fused path ─────────────────────────────────────────────────────
-    # Conditions: CUDA, head sizes fit in registers, Q and K have the same
-    # seq_len and head_dim (always true here), num_q_heads == num_kv_heads
-    # (GQA with different head counts handled by fallback for simplicity).
     half_dim_padded = next_power_of_two(half_dim)
+
     use_triton = (
         q.is_cuda
         and half_dim_padded <= MAX_ROPE_DIM
-        and num_q_heads == num_kv_heads   # same head count → same grid
-        and seq_len == k.shape[2]
+        and cos.shape[0] >= seq_len   # cos covers all positions
     )
 
     if use_triton:
-        q_f = q.to(torch.float32).contiguous()
-        k_f = k.to(torch.float32).contiguous()
-
+        q_f   = q.to(torch.float32).contiguous()
+        k_f   = k.to(torch.float32).contiguous()
         q_out = torch.empty_like(q_f)
         k_out = torch.empty_like(k_f)
 
-        # Grid: (num_heads, seq_len)
-        # Each program loads cos/sin once and rotates one head of BOTH Q and K.
-        grid = (num_q_heads, seq_len)
-
-        # We run over batch dimension with a loop to keep the kernel simple
-        # (batch is typically 1 for inference).
-        for b in range(batch):
-            rope_qk_fused_kernel[grid](
-                q_f[b],           # [num_q_heads,  seq_len, head_dim]
-                k_f[b],           # [num_kv_heads, seq_len, head_dim]
-                cos,              # [seq_len, half_dim]
-                sin,              # [seq_len, half_dim]
-                q_out[b],
-                k_out[b],
-                seq_len,
-                half_dim,
-                rotary_dim,
-                head_dim,
-                # Q strides (batch dim already indexed out)
-                0,                       # stride_q0 unused
-                q_f.stride(1),           # head
-                q_f.stride(2),           # seq
-                q_f.stride(3),           # dim
-                # K strides
-                0,
-                k_f.stride(1),
-                k_f.stride(2),
-                k_f.stride(3),
-                # cos/sin strides
-                cos.stride(0),           # seq
-                cos.stride(1),           # dim
-                # output strides (q_out and k_out share layout)
-                0,
-                q_out.stride(1),
-                q_out.stride(2),
-                q_out.stride(3),
-                BLOCK=half_dim_padded,
-            )
-
-        # Handle pass-through dimensions beyond rotary_dim
+        # Copy pass-through dims (beyond rotary_dim) before the kernel
+        # so we only need to store rotated slice inside the kernel.
         if head_dim > rotary_dim:
             q_out[..., rotary_dim:] = q_f[..., rotary_dim:]
             k_out[..., rotary_dim:] = k_f[..., rotary_dim:]
 
+        # Grid: (num_q_heads, seq_len)
+        # Programs with pid_h < num_kv_heads also rotate K.
+        grid = (num_q_heads, seq_len)
+
+        for b in range(batch):
+            rope_qk_fused_kernel[grid](
+                q_f[b], k_f[b],
+                cos, sin,
+                q_out[b], k_out[b],
+                num_kv_heads,
+                half_dim,
+                head_dim,
+                # Q strides (batch dim indexed out)
+                q_f.stride(1), q_f.stride(2), q_f.stride(3),
+                # K strides
+                k_f.stride(1), k_f.stride(2), k_f.stride(3),
+                # cos/sin strides
+                cos.stride(0), cos.stride(1),
+                # output strides (q_out layout)
+                q_out.stride(1), q_out.stride(2), q_out.stride(3),
+                BLOCK=half_dim_padded,
+            )
+
         return q_out.to(q.dtype), k_out.to(k.dtype)
 
-    # ── Fallback: original PyTorch path ──────────────────────────────────────
+    # ── PyTorch fallback ──────────────────────────────────────────────────────
     q_out = _apply_rope_single(q, cos, sin, half_dim, head_dim)
     k_out = _apply_rope_single(k, cos, sin, half_dim, head_dim)
     return q_out.to(q.dtype), k_out.to(k.dtype)
@@ -477,42 +364,41 @@ def apply_partial_rotary_pos_emb(
     sin: torch.Tensor,
     rotary_dim: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Apply rotary embeddings to partial dimensions."""
     return apply_rotary_pos_emb(q, k, cos, sin, rotary_dim)
 
 
+# ============================================================================
+# Self-test
+# ============================================================================
+
 if __name__ == "__main__":
-    print("Testing Triton RoPE...")
+    import math
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    batch_size = 2
-    num_heads = 4
-    seq_len = 16
-    head_dim = 64
+    print(f"Running on: {device}\n")
 
-    rope = RotaryEmbedding(dim=head_dim, max_position_embeddings=1024)
+    def run_test(tag, batch, num_q, num_kv, seq, dim):
+        rope   = RotaryEmbedding(dim=dim, max_position_embeddings=256)
+        q      = torch.randn(batch, num_q,  seq, dim, device=device)
+        k      = torch.randn(batch, num_kv, seq, dim, device=device)
+        cos, sin = rope(q)
 
-    q = torch.randn(batch_size, num_heads, seq_len, head_dim, device=device)
-    k = torch.randn(batch_size, num_heads, seq_len, head_dim, device=device)
+        # Fused
+        q_fused, k_fused = apply_rotary_pos_emb(q, k, cos, sin)
 
-    cos, sin = rope(q)
-    print(f"Cos shape: {cos.shape}")
-    print(f"Sin shape: {sin.shape}")
+        # Reference (PyTorch)
+        half = dim // 2
+        q_ref = _apply_rope_single(q, cos, sin, half, dim)
+        k_ref = _apply_rope_single(k, cos, sin, half, dim)
 
-    q_rot, k_rot = apply_rotary_pos_emb(q, k, cos, sin)
-    print(f"Q rotated shape: {q_rot.shape}")
-    print(f"K rotated shape: {k_rot.shape}")
+        eq = (q_fused - q_ref).abs().max().item()
+        ek = (k_fused - k_ref).abs().max().item()
+        status = "PASS ✓" if max(eq, ek) < 1e-4 else "FAIL"
+        print(f"{tag:30s}  Q err={eq:.1e}  K err={ek:.1e}  {status}")
 
-    # Correctness check vs PyTorch fallback
-    q_ref, k_ref = _apply_rope_single(q, cos, sin, head_dim // 2, head_dim), \
-                   _apply_rope_single(k, cos, sin, head_dim // 2, head_dim)
-    print(f"Q max err vs ref: {(q_rot - q_ref).abs().max().item():.2e}")
-    print(f"K max err vs ref: {(k_rot - k_ref).abs().max().item():.2e}")
-
-    print("\nTesting partial RoPE (50%):")
-    rope_partial = RotaryEmbedding(dim=head_dim, partial_rotary_factor=0.5)
-    cos_p, sin_p = rope_partial(q)
-    q_rot_p, k_rot_p = apply_partial_rotary_pos_emb(q, k, cos_p, sin_p, head_dim // 2)
-    print(f"Q rotated (partial) shape: {q_rot_p.shape}")
+    run_test("MHA  (audio, heads=20)",       1, 20, 20, 16, 64)
+    run_test("GQA  (text,  Q=28 KV=4)",      1, 28,  4,  1, 128)
+    run_test("GQA  batch>1",                 2, 28,  4,  8, 128)
+    run_test("partial RoPE (factor=0.5)",    1,  4,  4, 16,  32)
 
     print("\nTriton RoPE working!")

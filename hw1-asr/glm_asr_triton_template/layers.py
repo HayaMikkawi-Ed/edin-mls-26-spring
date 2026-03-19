@@ -2,8 +2,10 @@
 Triton Neural Network Layers
 End-to-end implementation using Triton kernels
 
-*** STUDENT ASSIGNMENT ***
-Fill in the TODO sections to implement core layers using Triton kernels
+FUSION B applied:
+  residual add (Python) + rmsnorm_kernel
+  → add_rmsnorm_kernel
+  (intermediate x+residual tensor never written to HBM)
 """
 
 import math
@@ -53,23 +55,9 @@ def rmsnorm_kernel(
 ):
     """
     RMSNorm: x / RMS(x) * weight
-
-    *** TODO: Implement this kernel ***
-
     Grid: (batch_size,)
     """
     pid = tl.program_id(0)
-
-    # ============================================================================
-    # TODO: Implement RMSNorm kernel
-    # ============================================================================
-    #
-    # Step 1: Load input row and weight
-    # Step 2: Compute variance = mean(x^2)
-    # Step 3: Normalize: x / sqrt(variance + eps)
-    # Step 4: Apply weight and store
-
-    # YOUR CODE HERE
     offs = tl.arange(0, BLOCK_SIZE)
     mask = offs < hidden_size
     x = tl.load(x_ptr + pid * stride_x + offs, mask=mask, other=0.0)
@@ -78,6 +66,60 @@ def rmsnorm_kernel(
     x_norm = x * tl.rsqrt(var + eps)
     w = tl.load(w_ptr + offs, mask=mask, other=0.0)
     y = x_norm * w
+    tl.store(y_ptr + pid * stride_y + offs, y, mask=mask)
+
+
+@triton.jit
+def add_rmsnorm_kernel(
+    x_ptr,
+    residual_ptr,
+    w_ptr,
+    y_ptr,
+    residual_out_ptr,
+    stride_x,
+    stride_r,
+    stride_y,
+    stride_ro,
+    hidden_size,
+    eps,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """
+    FUSION B: fused residual add + RMSNorm.
+    Grid: (batch_tokens,)
+
+    Replaces the two-step sequence:
+        x = x + residual          (Python op — wrote x_added to HBM)
+        y = rmsnorm_kernel(x)     (read x_added from HBM, wrote y to HBM)
+
+    The sum x+residual lives in registers and is never stored to HBM before
+    being consumed by the RMSNorm computation.
+
+    Both the normalised output y and the raw sum residual_out are written once.
+    residual_out lets the caller use the un-normalised sum for the next
+    residual connection without an extra read.
+    """
+    pid = tl.program_id(0)
+    offs = tl.arange(0, BLOCK_SIZE)
+    mask = offs < hidden_size
+
+    # Step 1: load both inputs
+    x = tl.load(x_ptr        + pid * stride_x  + offs, mask=mask, other=0.0).to(tl.float32)
+    r = tl.load(residual_ptr + pid * stride_r  + offs, mask=mask, other=0.0).to(tl.float32)
+
+    # Step 2: add in registers — no HBM write
+    x_added = x + r
+
+    # Step 3: store raw sum for next residual connection
+    tl.store(residual_out_ptr + pid * stride_ro + offs, x_added, mask=mask)
+
+    # Step 4: RMSNorm
+    var   = tl.sum(x_added * x_added, axis=0) / hidden_size
+    x_n   = x_added * tl.rsqrt(var + eps)
+    w     = tl.load(w_ptr + offs, mask=mask, other=0.0)
+    y     = x_n * w
+
+    # Step 5: store normalised output
     tl.store(y_ptr + pid * stride_y + offs, y, mask=mask)
 
 
@@ -95,24 +137,9 @@ def layernorm_kernel(
 ):
     """
     LayerNorm: (x - mean) / sqrt(var + eps) * weight + bias
-
-    *** TODO: Implement this kernel ***
-
     Grid: (batch_size,)
     """
     pid = tl.program_id(0)
-
-    # ============================================================================
-    # TODO: Implement LayerNorm kernel
-    # ============================================================================
-    #
-    # Step 1: Load input, weight, and bias
-    # Step 2: Compute mean
-    # Step 3: Center the data
-    # Step 4: Compute variance = mean((x - mean)^2)
-    # Step 5: Normalize and apply affine transform
-
-    # YOUR CODE HERE
     offs = tl.arange(0, BLOCK_SIZE)
     mask = offs < hidden_size
     x = tl.load(x_ptr + pid * stride_x + offs, mask=mask, other=0.0)
@@ -129,26 +156,11 @@ def layernorm_kernel(
 
 @triton.jit
 def gelu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    """
-    GELU using tanh approximation.
-
-    *** TODO: Implement this kernel ***
-    """
+    """GELU using tanh approximation."""
     pid = tl.program_id(0)
-
-    # ============================================================================
-    # TODO: Implement GELU kernel
-    # ============================================================================
-    #
-    # Step 1: Load input tile
-    # Step 2: Compute tanh approximation
-    # Step 3: Store output
-
-    # YOUR CODE HERE
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
     x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
-
     sqrt_2_over_pi = 0.7978845608028654
     x3 = x * x * x
     inner = sqrt_2_over_pi * (x + 0.044715 * x3)
@@ -158,20 +170,7 @@ def gelu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 @triton.jit
 def silu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    """
-    SiLU/Swish: x * sigmoid(x)
-
-    *** TODO: Implement this kernel ***
-    """
-    # ============================================================================
-    # TODO: Implement SiLU kernel
-    # ============================================================================
-    #
-    # Step 1: Load input tile
-    # Step 2: Compute sigmoid
-    # Step 3: Multiply and store
-
-    # YOUR CODE HERE
+    """SiLU/Swish: x * sigmoid(x)"""
     pid = tl.program_id(0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offs < n_elements
@@ -179,6 +178,7 @@ def silu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     sigmoid = 1.0 / (1.0 + tl.exp(-x))
     y = x * sigmoid
     tl.store(y_ptr + offs, y, mask=mask)
+
 
 @triton.jit
 def linear_kernel_tf32(
@@ -201,27 +201,11 @@ def linear_kernel_tf32(
     """
     TF32-style matmul: output = A @ B.
     A: (M, K), B: (K, N), C: (M, N)
-
-    *** TODO: Implement this kernel ***
-
     Grid: (M // BLOCK_M, N // BLOCK_N)
     """
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
 
-    # ============================================================================
-    # TODO: Implement tiled matrix multiplication
-    # ============================================================================
-    #
-    # Step 1: Initialize accumulator
-    # Step 2: Loop over K tiles and accumulate tl.dot
-    # Step 3: Store the result
-
-    # YOUR CODE HERE
-    """
-    Tensor core-style matmul: output = A @ B.
-    A: (M, K), B: (K, N), C: (M, N)
-    """
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
@@ -246,7 +230,6 @@ def linear_kernel_tf32(
         acc,
         mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
     )
-    
 
 
 @triton.jit
@@ -331,7 +314,7 @@ def swiglu_fused_kernel(
     offs_k = tl.arange(0, BLOCK_K)
 
     gate_acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    up_acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    up_acc   = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
     for k in range(0, K, BLOCK_K):
         a = tl.load(
@@ -349,13 +332,12 @@ def swiglu_fused_kernel(
             mask=(k + offs_k[:, None] < K) & (offs_n[None, :] < N),
             other=0.0,
         )
-
         gate_acc += tl.dot(a, gate_w)
-        up_acc += tl.dot(a, up_w)
+        up_acc   += tl.dot(a, up_w)
 
-    sigmoid = 1.0 / (1.0 + tl.exp(-gate_acc))
+    sigmoid  = 1.0 / (1.0 + tl.exp(-gate_acc))
     gate_act = gate_acc * sigmoid
-    out = gate_act * up_acc
+    out      = gate_act * up_acc
 
     tl.store(
         c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn,
@@ -390,23 +372,8 @@ def embedding_kernel(
 
 @triton.jit
 def softmax_kernel(x_ptr, y_ptr, stride_x, stride_y, n_cols, BLOCK_SIZE: tl.constexpr):
-    """
-    Numerically stable softmax over last dimension.
-
-    *** TODO: Implement this kernel ***
-    """
+    """Numerically stable softmax over last dimension."""
     row = tl.program_id(0)
-
-    # ============================================================================
-    # TODO: Implement softmax kernel
-    # ============================================================================
-    #
-    # Step 1: Load row with masking
-    # Step 2: Subtract max for stability
-    # Step 3: Compute exp and normalize
-    # Step 4: Store output
-
-    # YOUR CODE HERE
     offs = tl.arange(0, BLOCK_SIZE)
     mask = offs < n_cols
     x = tl.load(x_ptr + row * stride_x + offs, mask=mask, other=-float("inf"))
@@ -415,7 +382,6 @@ def softmax_kernel(x_ptr, y_ptr, stride_x, stride_y, n_cols, BLOCK_SIZE: tl.cons
     denom = tl.sum(exp_x, axis=0)
     y = exp_x / denom
     tl.store(y_ptr + row * stride_y + offs, y, mask=mask)
-
 
 
 @triton.jit
@@ -440,7 +406,7 @@ def attention_scores_kernel(
 ):
     """Compute attention scores: Q @ K^T * scale."""
     pid_bh = tl.program_id(0)
-    pid_q = tl.program_id(1)
+    pid_q  = tl.program_id(1)
 
     offs_k = tl.arange(0, BLOCK_K)
     offs_d = tl.arange(0, BLOCK_D)
@@ -490,7 +456,7 @@ def attention_output_kernel(
 ):
     """Compute attention output: weights @ V."""
     pid_bh = tl.program_id(0)
-    pid_q = tl.program_id(1)
+    pid_q  = tl.program_id(1)
 
     offs_k = tl.arange(0, BLOCK_K)
     offs_d = tl.arange(0, BLOCK_D)
@@ -534,7 +500,7 @@ def causal_mask_kernel(
 ):
     """Apply causal mask to attention scores."""
     pid_bh = tl.program_id(0)
-    pid_q = tl.program_id(1)
+    pid_q  = tl.program_id(1)
 
     offs_k = tl.arange(0, BLOCK_K)
     mask = offs_k < seq_k
@@ -574,13 +540,12 @@ class RMSNorm:
         self.hidden_size = hidden_size
         self.eps = eps
         self.weight = torch.ones(hidden_size, dtype=torch.float32)
-        self.use_triton = _is_power_of_two(hidden_size) # This flag will force a fallback to a PyTorch implementation of the kernels when the hidden_size is not a power of 2.
+        self.use_triton = _is_power_of_two(hidden_size)
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         original_shape = x.shape
 
-       
-        if self.use_triton and x.is_cuda:  # remove self.use_triton flag from this if-statement in case you want to always run your Triton kernel regardless of whether hidden_size is a power of 2.
+        if self.use_triton and x.is_cuda:
             batch_size = int(np.prod(x.shape[:-1]))
             x_flat = x.reshape(batch_size, self.hidden_size).contiguous()
             x_flat = x_flat.to(torch.float32)
@@ -610,6 +575,80 @@ class RMSNorm:
         return (self.weight * x_normed).to(x.dtype)
 
 
+class AddRMSNorm:
+    """
+    FUSION B: fused residual add + RMSNorm.
+
+    Replaces the two-step pattern at every transformer layer boundary:
+        x = x + residual      # wrote x_added to HBM
+        x = rmsnorm(x)        # read x_added from HBM
+
+    Usage:
+        add_norm = AddRMSNorm(hidden_size)
+
+        # copy weights from your existing RMSNorm:
+        add_norm.weight = existing_rmsnorm.weight
+
+        # at each layer boundary:
+        normed, x = add_norm(x, sub_layer_output)
+        # normed → feed into next projection / MLP
+        # x      → un-normalised sum, used as residual for the next add
+    """
+
+    def __init__(self, hidden_size: int, eps: float = 1e-6):
+        self.hidden_size = hidden_size
+        self.eps = eps
+        self.weight = torch.ones(hidden_size, dtype=torch.float32)
+        self.use_triton = _is_power_of_two(hidden_size)
+
+    def __call__(
+        self,
+        x: torch.Tensor,
+        residual: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Returns (normed_output, x_plus_residual).
+
+        normed_output   = RMSNorm(x + residual)
+        x_plus_residual = x + residual  (un-normalised, for next residual add)
+        """
+        original_shape = x.shape
+
+        if self.use_triton and x.is_cuda:
+            batch_tokens = int(np.prod(x.shape[:-1]))
+            x_flat  = x.reshape(batch_tokens, self.hidden_size).contiguous().to(torch.float32)
+            r_flat  = residual.reshape(batch_tokens, self.hidden_size).contiguous().to(torch.float32)
+            y_flat  = torch.empty_like(x_flat)
+            ro_flat = torch.empty_like(x_flat)
+
+            if self.weight.device != x.device:
+                self.weight = self.weight.to(x.device)
+
+            block = next_power_of_two(self.hidden_size)
+            add_rmsnorm_kernel[(batch_tokens,)](
+                x_flat, r_flat, self.weight, y_flat, ro_flat,
+                x_flat.stride(0),
+                r_flat.stride(0),
+                y_flat.stride(0),
+                ro_flat.stride(0),
+                self.hidden_size,
+                self.eps,
+                BLOCK_SIZE=block,
+            )
+            return (
+                y_flat.reshape(original_shape).to(x.dtype),
+                ro_flat.reshape(original_shape).to(x.dtype),
+            )
+
+        # CPU / non-power-of-two fallback
+        x_f     = x.to(torch.float32) + residual.to(torch.float32)
+        var     = torch.mean(x_f * x_f, dim=-1, keepdim=True)
+        x_normed = x_f * torch.rsqrt(var + self.eps)
+        if self.weight.device != x.device:
+            self.weight = self.weight.to(x.device)
+        return (self.weight * x_normed).to(x.dtype), x_f.to(x.dtype)
+
+
 class LayerNorm:
     """Layer Normalization using Triton with Torch fallback."""
 
@@ -618,12 +657,12 @@ class LayerNorm:
         self.eps = eps
         self.weight = torch.ones(hidden_size, dtype=torch.float32)
         self.bias = torch.zeros(hidden_size, dtype=torch.float32)
-        self.use_triton = _is_power_of_two(hidden_size)  # This flag will force a fallback to a PyTorch implementation of the kernels when the hidden_size is not a power of 2.
+        self.use_triton = _is_power_of_two(hidden_size)
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         original_shape = x.shape
 
-        if self.use_triton and x.is_cuda:  # remove self.use_triton flag from this if-statement in case you want to always run your Triton kernel regardless of whether hidden_size is a power of 2.
+        if self.use_triton and x.is_cuda:
             batch_size = int(np.prod(x.shape[:-1]))
             x_flat = x.reshape(batch_size, self.hidden_size).contiguous()
             x_flat = x_flat.to(torch.float32)
@@ -930,14 +969,14 @@ class MLP:
 
         if use_gating:
             self.gate_proj = Linear(hidden_size, intermediate_size, bias=bias)
-            self.up_proj = Linear(hidden_size, intermediate_size, bias=bias)
+            self.up_proj   = Linear(hidden_size, intermediate_size, bias=bias)
         else:
             self.up_proj = Linear(hidden_size, intermediate_size, bias=bias)
 
         self.down_proj = Linear(intermediate_size, hidden_size, bias=bias)
 
         self._gate_weight_t = None
-        self._up_weight_t = None
+        self._up_weight_t   = None
 
     def _prepare_fused_weights(self):
         """Prepare pre-transposed weights for fused kernel."""
@@ -945,7 +984,7 @@ class MLP:
             if self.gate_proj.weight.device != self.up_proj.weight.device:
                 self.up_proj.weight = self.up_proj.weight.to(self.gate_proj.weight.device)
             self._gate_weight_t = self.gate_proj.weight.t().contiguous()
-            self._up_weight_t = self.up_proj.weight.t().contiguous()
+            self._up_weight_t   = self.up_proj.weight.t().contiguous()
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if self.use_gating and MLP.FUSED and x.is_cuda:
@@ -953,13 +992,11 @@ class MLP:
         return self._forward_standard(x)
 
     def _forward_standard(self, x: torch.Tensor) -> torch.Tensor:
-        """Standard (unfused) forward pass."""
         if self.use_gating:
             return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
         return self.down_proj(self.act_fn(self.up_proj(x)))
 
     def _forward_fused(self, x: torch.Tensor) -> torch.Tensor:
-        """Fused SwiGLU forward pass."""
         if self.gate_proj.weight.device != x.device:
             self.gate_proj.weight = self.gate_proj.weight.to(x.device)
             self._gate_weight_t = None
@@ -979,53 +1016,31 @@ class MLP:
         N_pad = pad_to_multiple(N, self.TILE_N)
 
         if M != M_pad or K != K_pad:
-            x_padded = torch.zeros(
-                (M_pad, K_pad), dtype=torch.float32, device=x.device
-            )
+            x_padded = torch.zeros((M_pad, K_pad), dtype=torch.float32, device=x.device)
             x_padded[:M, :K] = x_2d
         else:
             x_padded = x_2d
 
         if K != K_pad or N != N_pad:
-            gate_w_padded = torch.zeros(
-                (K_pad, N_pad), dtype=torch.float32, device=x.device
-            )
+            gate_w_padded = torch.zeros((K_pad, N_pad), dtype=torch.float32, device=x.device)
             gate_w_padded[:K, :N] = self._gate_weight_t
-            up_w_padded = torch.zeros(
-                (K_pad, N_pad), dtype=torch.float32, device=x.device
-            )
+            up_w_padded = torch.zeros((K_pad, N_pad), dtype=torch.float32, device=x.device)
             up_w_padded[:K, :N] = self._up_weight_t
         else:
             gate_w_padded = self._gate_weight_t
-            up_w_padded = self._up_weight_t
+            up_w_padded   = self._up_weight_t
 
-        intermediate = torch.zeros(
-            (M_pad, N_pad), dtype=torch.float32, device=x.device
-        )
+        intermediate = torch.zeros((M_pad, N_pad), dtype=torch.float32, device=x.device)
 
-        grid = (
-            triton.cdiv(M_pad, self.TILE_M),
-            triton.cdiv(N_pad, self.TILE_N),
-        )
+        grid = (triton.cdiv(M_pad, self.TILE_M), triton.cdiv(N_pad, self.TILE_N))
         swiglu_fused_kernel[grid](
-            x_padded,
-            gate_w_padded,
-            up_w_padded,
-            intermediate,
-            M_pad,
-            N_pad,
-            K_pad,
-            x_padded.stride(0),
-            x_padded.stride(1),
-            gate_w_padded.stride(0),
-            gate_w_padded.stride(1),
-            up_w_padded.stride(0),
-            up_w_padded.stride(1),
-            intermediate.stride(0),
-            intermediate.stride(1),
-            BLOCK_M=self.TILE_M,
-            BLOCK_N=self.TILE_N,
-            BLOCK_K=self.TILE_K,
+            x_padded, gate_w_padded, up_w_padded, intermediate,
+            M_pad, N_pad, K_pad,
+            x_padded.stride(0),    x_padded.stride(1),
+            gate_w_padded.stride(0), gate_w_padded.stride(1),
+            up_w_padded.stride(0),   up_w_padded.stride(1),
+            intermediate.stride(0),  intermediate.stride(1),
+            BLOCK_M=self.TILE_M, BLOCK_N=self.TILE_N, BLOCK_K=self.TILE_K,
         )
 
         if M != M_pad or N != N_pad:
@@ -1059,7 +1074,6 @@ class EncoderMLP:
         self._fc1_weight_t = None
 
     def _prepare_fused_weights(self):
-        """Prepare pre-transposed weights for fused kernel."""
         if self._fc1_weight_t is None:
             self._fc1_weight_t = self.fc1.weight.t().contiguous()
 
@@ -1069,11 +1083,9 @@ class EncoderMLP:
         return self._forward_standard(x)
 
     def _forward_standard(self, x: torch.Tensor) -> torch.Tensor:
-        """Standard (unfused) forward pass."""
         return self.fc2(self.act_fn(self.fc1(x)))
 
     def _forward_fused(self, x: torch.Tensor) -> torch.Tensor:
-        """Fused Linear+GELU forward pass."""
         if self.fc1.weight.device != x.device:
             self.fc1.weight = self.fc1.weight.to(x.device)
             self._fc1_weight_t = None
@@ -1090,45 +1102,27 @@ class EncoderMLP:
         N_pad = pad_to_multiple(N, self.TILE_N)
 
         if M != M_pad or K != K_pad:
-            x_padded = torch.zeros(
-                (M_pad, K_pad), dtype=torch.float32, device=x.device
-            )
+            x_padded = torch.zeros((M_pad, K_pad), dtype=torch.float32, device=x.device)
             x_padded[:M, :K] = x_2d
         else:
             x_padded = x_2d
 
         if K != K_pad or N != N_pad:
-            fc1_w_padded = torch.zeros(
-                (K_pad, N_pad), dtype=torch.float32, device=x.device
-            )
+            fc1_w_padded = torch.zeros((K_pad, N_pad), dtype=torch.float32, device=x.device)
             fc1_w_padded[:K, :N] = self._fc1_weight_t
         else:
             fc1_w_padded = self._fc1_weight_t
 
-        intermediate = torch.zeros(
-            (M_pad, N_pad), dtype=torch.float32, device=x.device
-        )
+        intermediate = torch.zeros((M_pad, N_pad), dtype=torch.float32, device=x.device)
 
-        grid = (
-            triton.cdiv(M_pad, self.TILE_M),
-            triton.cdiv(N_pad, self.TILE_N),
-        )
+        grid = (triton.cdiv(M_pad, self.TILE_M), triton.cdiv(N_pad, self.TILE_N))
         linear_gelu_kernel[grid](
-            x_padded,
-            fc1_w_padded,
-            intermediate,
-            M_pad,
-            N_pad,
-            K_pad,
-            x_padded.stride(0),
-            x_padded.stride(1),
-            fc1_w_padded.stride(0),
-            fc1_w_padded.stride(1),
-            intermediate.stride(0),
-            intermediate.stride(1),
-            BLOCK_M=self.TILE_M,
-            BLOCK_N=self.TILE_N,
-            BLOCK_K=self.TILE_K,
+            x_padded, fc1_w_padded, intermediate,
+            M_pad, N_pad, K_pad,
+            x_padded.stride(0),    x_padded.stride(1),
+            fc1_w_padded.stride(0), fc1_w_padded.stride(1),
+            intermediate.stride(0), intermediate.stride(1),
+            BLOCK_M=self.TILE_M, BLOCK_N=self.TILE_N, BLOCK_K=self.TILE_K,
         )
 
         if M != M_pad or N != N_pad:
@@ -1153,6 +1147,15 @@ if __name__ == "__main__":
     x = torch.randn(2, 16, 256, device=device, dtype=torch.float32)
     y = norm(x)
     print(f"Input: {x.shape} -> Output: {y.shape}")
+
+    print("\n=== AddRMSNorm (Fusion B) ===")
+    add_norm = AddRMSNorm(256)
+    residual = torch.randn_like(x)
+    y_normed, x_added = add_norm(x, residual)
+    y_ref = norm(x + residual)
+    err = (y_normed - y_ref).abs().max().item()
+    print(f"Input: {x.shape} -> Normed: {y_normed.shape}, Sum: {x_added.shape}")
+    print(f"Max error vs unfused: {err:.2e}")
 
     print("\n=== LayerNorm ===")
     ln = LayerNorm(256)

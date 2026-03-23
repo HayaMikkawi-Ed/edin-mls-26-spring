@@ -1,0 +1,250 @@
+======================================================================
+GLM-ASR Detailed Operator Profiling
+======================================================================
+
+Loading test audio...
+Audio: 3.50s @ 16000Hz
+
+Loading model from glm_asr_triton_template...
+Loading HuggingFace model: zai-org/GLM-ASR-Nano-2512
+Creating Triton model with config:
+  Audio: hidden=1280, heads=20, layers=32
+  Text: hidden=2048, heads=16, kv_heads=4, layers=28
+Loading HuggingFace weights...
+Loading audio encoder weights...
+Loading multi-modal projector weights...
+Loading text decoder weights...
+Weight loading complete!
+Input features shape: torch.Size([1, 128, 3000])
+Input IDs shape: torch.Size([1, 59])
+
+======================================================================
+DETAILED OPERATOR PROFILING (TORCH)
+======================================================================
+
+[1/4] Profiling Audio Encoder...
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+  Audio Encoder: 1185.81ms (+/- 1496.04ms)
+
+[2/4] Profiling Multi-modal Projector...
+  Projector: 380.52ms (+/- 537.19ms)
+
+[3/4] Profiling Text Decoder (Prefill)...
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+  Decoder Prefill: 1020.27ms (+/- 1406.46ms)
+
+[4/4] Profiling Decode Steps...
+  Decode Step (avg): 201.08ms (+/- 520.65ms)
+
+[5] Profiling Individual Decoder Layers...
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+  Layer 0: 1.11ms (+/- 0.04ms)
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+  Layer 1: 1.08ms (+/- 0.01ms)
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+  Layer 2: 1.09ms (+/- 0.02ms)
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+  Layer 3: 1.08ms (+/- 0.01ms)
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+Flash attention best config: BLOCK_Q: 64, BLOCK_K: 32, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
+  Layer 4: 1.06ms (+/- 0.02ms)
+
+======================================================================
+PERFORMANCE SUMMARY
+======================================================================
+
+Component                              Time (ms)   % of Total
+------------------------------------------------------------
+Audio Encoder                          1185.81ms        9.4%
+Multi-modal Projector                   380.52ms        3.0%
+Decoder (Prefill)                      1020.27ms        8.1%
+Decoder (50 decode steps)             10053.79ms       79.5%
+------------------------------------------------------------
+TOTAL (estimated for 50 tokens)       12640.38ms

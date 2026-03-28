@@ -186,7 +186,11 @@ def silu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
         triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64,  'BLOCK_K': 32}, num_warps=4, num_stages=3),
         triton.Config({'BLOCK_M': 64,  'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=4, num_stages=3),
         triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=8, num_stages=3),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64}, num_warps=8, num_stages=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64},  num_warps=8, num_stages=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 128}, num_warps=8, num_stages=4),
+        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 64},  num_warps=8, num_stages=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 256, 'BLOCK_K': 64},  num_warps=8, num_stages=4),
+        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 64,  'BLOCK_K': 128}, num_warps=8, num_stages=4),
     ],
     key=['M', 'N', 'K'],
 )
@@ -294,6 +298,18 @@ def linear_gelu_kernel(
     )
 
 
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_M': 64,  'BLOCK_N': 64,  'BLOCK_K': 32}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64,  'BLOCK_K': 32}, num_warps=4, num_stages=3),
+        triton.Config({'BLOCK_M': 64,  'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=4, num_stages=3),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=8, num_stages=3),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64}, num_warps=8, num_stages=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 128}, num_warps=8, num_stages=4),
+        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 64}, num_warps=8, num_stages=4),
+    ],
+    key=['M', 'N', 'K'],
+)
 @triton.jit
 def swiglu_fused_kernel(
     a_ptr,
@@ -1046,7 +1062,7 @@ class MLP:
 
         intermediate = torch.zeros((M_pad, N_pad), dtype=torch.float32, device=x.device)
 
-        grid = (triton.cdiv(M_pad, self.TILE_M), triton.cdiv(N_pad, self.TILE_N))
+        grid = lambda meta: (triton.cdiv(M_pad, meta['BLOCK_M']), triton.cdiv(N_pad, meta['BLOCK_N']))
         swiglu_fused_kernel[grid](
             x_padded, gate_w_padded, up_w_padded, intermediate,
             M_pad, N_pad, K_pad,
@@ -1054,7 +1070,6 @@ class MLP:
             gate_w_padded.stride(0), gate_w_padded.stride(1),
             up_w_padded.stride(0),   up_w_padded.stride(1),
             intermediate.stride(0),  intermediate.stride(1),
-            BLOCK_M=self.TILE_M, BLOCK_N=self.TILE_N, BLOCK_K=self.TILE_K,
         )
 
         if M != M_pad or N != N_pad:
